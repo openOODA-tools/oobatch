@@ -1,0 +1,21 @@
+# Maintainer: openOODA-tools <ops@openooda.org>
+pkgname=oobatch-bin
+_pkgname=oobatch
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Non-interactive batch job manager queueing tasks when system load factor drops."
+arch=('x86_64')
+url="https://github.com/openOODA-tools/oobatch"
+license=('Apache-2.0')
+depends=('glibc')
+provides=('oobatch')
+conflicts=('oobatch')
+source_x86_64=("${url}/releases/download/v${pkgver}/oobatch-linux-x86_64"
+               "uninstall.sh::https://raw.githubusercontent.com/openOODA-tools/${_pkgname}/v${pkgver}/uninstall.sh")
+sha256sums_x86_64=('SKIP'
+                   'SKIP')
+
+package() {
+    install -Dm755 "${srcdir}/oobatch-linux-x86_64" "${pkgdir}/usr/bin/oobatch"
+    install -Dm755 uninstall.sh "${pkgdir}/usr/bin/oobatch-uninstall"
+}
