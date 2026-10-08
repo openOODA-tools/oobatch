@@ -1,0 +1,23 @@
+// # oobatch Core Subsystem Anchor
+//
+// Logline: Consolidates load factor inspection, job representation, service runners, and queue logic.
+//
+// Setup: Root barrel shim for core batch scheduling domain.
+//
+// Beats:
+//   1. Re-export load factor inspection and threshold evaluator.
+//   2. Re-export batch job data structures and serializers.
+//   3. Re-export transient service unit generator and queue filters.
+
+import "core/load_factor.oo";
+import "core/batch_job.oo";
+import "core/batch_runner.oo";
+import "core/batch_queue.oo";
+
+pub fn core_subsystem_version() -> String {
+    return "0.2.0";
+}
+
+pub fn core_subsystem_description() -> String {
+    return "oobatch pure openOODA batch queue and load manager subsystem";
+}

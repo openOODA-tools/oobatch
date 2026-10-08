@@ -1,0 +1,10 @@
+Package: oobatch
+Version: 0.2.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: openOODA-tools <ops@openooda.org>
+Description: Non-interactive batch job manager queueing tasks when system load factor drops.
+ oobatch is a sovereign, capability-bounded BATCH QUEUE written in pure
+ openOODA, featuring zero ambient authority, oote color themes, and an
+ MCP stdio server.

@@ -1,0 +1,38 @@
+// # oobatch Transient Service Generator
+//
+// Logline: Synthesizes systemd unit definitions and systemd-run invocation strings for batch jobs.
+//
+// Setup: Pure record processor generating compliant systemd-native transient services.
+//
+// Beats:
+//   1. Build transient .service unit definition encapsulating batch command execution.
+//   2. Configure CPUWeight, IOWeight, and Nice properties for low-priority batch execution.
+//   3. Construct canonical systemd-run CLI argument vector for user slice execution.
+
+import "core/batch_job.oo";
+
+pub type BatchTransientUnit = struct {
+    unit_name: String,
+    service_content: String,
+    run_command: String
+};
+
+pub fn build_batch_service(job: BatchJob) -> BatchTransientUnit {
+    let unit: String = job.unit_name;
+    let mut service_body: String = "[Unit]\nDescription=oobatch deferred runner #" + job.id + "\n\n[Service]\nType=oneshot\n";
+    service_body = service_body + "Nice=19\n";
+    service_body = service_body + "CPUWeight=20\n";
+    service_body = service_body + "IOWeight=20\n";
+    service_body = service_body + "ExecStart=" + job.command + "\n";
+
+    let mut run_cmd: String = "systemd-run --user --unit=" + unit + " ";
+    run_cmd = run_cmd + "--description=\"oobatch job #" + job.id + "\" ";
+    run_cmd = run_cmd + "--property=CPUWeight=20 --property=IOWeight=20 --property=Nice=19 ";
+    run_cmd = run_cmd + "-- " + job.command;
+
+    return BatchTransientUnit {
+        unit_name: unit,
+        service_content: service_body,
+        run_command: run_cmd
+    };
+}

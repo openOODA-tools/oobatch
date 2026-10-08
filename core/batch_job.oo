@@ -1,0 +1,93 @@
+// # oobatch Batch Job Model
+//
+// Logline: Data structures and state representation for deferred batch execution jobs.
+//
+// Setup: Pure record definition with serialization and identifier constructors.
+//
+// Beats:
+//   1. Define BatchJob record capturing identifier, queue designation, command, and load limit.
+//   2. Generate unique systemd transient unit names for scheduled batch runners.
+//   3. Implement line-oriented record serialization and deserialization.
+
+pub type BatchJob = struct {
+    id: String,
+    command: String,
+    queue: String,
+    target_load: String,
+    state: String,
+    created_at: String,
+    unit_name: String
+};
+
+pub fn batch_unit_prefix() -> String {
+    return "oobatch-job-";
+}
+
+pub fn make_batch_job(
+    id: String,
+    command: String,
+    queue: String,
+    target_load: String,
+    created_at: String
+) -> BatchJob {
+    let unit: String = batch_unit_prefix() + id;
+    let q: String = if chars_len(queue) > 0 { queue } else { "b" };
+    let t_load: String = if chars_len(target_load) > 0 { target_load } else { "1.50" };
+
+    return BatchJob {
+        id: id,
+        command: command,
+        queue: q,
+        target_load: t_load,
+        state: "queued",
+        created_at: created_at,
+        unit_name: unit
+    };
+}
+
+pub fn serialize_batch_job(job: BatchJob) -> String {
+    return job.id + "\t"
+        + job.queue + "\t"
+        + job.target_load + "\t"
+        + job.state + "\t"
+        + job.created_at + "\t"
+        + job.command;
+}
+
+pub fn deserialize_batch_job(line: String) -> BatchJob {
+    let trimmed: String = str_trim(line);
+    let mut parts: List[String] = list_new();
+    let n: Int = chars_len(trimmed);
+    let mut curr: String = "";
+    let mut i: Int = 0;
+
+    while i < n {
+        let c: String = char_at(trimmed, i);
+        if c == "\t" {
+            parts = list_push(parts, curr);
+            curr = "";
+        } else {
+            curr = curr + c;
+        }
+        i = i + 1;
+    }
+    parts = list_push(parts, curr);
+
+    let num_parts: Int = list_len(parts);
+    let id: String = if num_parts > 0 { list_get(parts, 0) } else { "1" };
+    let q: String = if num_parts > 1 { list_get(parts, 1) } else { "b" };
+    let tl: String = if num_parts > 2 { list_get(parts, 2) } else { "1.50" };
+    let st: String = if num_parts > 3 { list_get(parts, 3) } else { "queued" };
+    let ca: String = if num_parts > 4 { list_get(parts, 4) } else { "0" };
+    let cmd: String = if num_parts > 5 { list_get(parts, 5) } else { "" };
+
+    return BatchJob {
+        id: id,
+        command: cmd,
+        queue: q,
+        target_load: tl,
+        state: st,
+        created_at: ca,
+        unit_name: batch_unit_prefix() + id
+    };
+}

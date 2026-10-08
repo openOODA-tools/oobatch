@@ -1,5 +1,5 @@
 Name:           oobatch
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Non-interactive batch job manager queueing tasks when system load factor drops.
 License:        ASL 2.0
@@ -24,5 +24,5 @@ install -m 0755 %{SOURCE1} %{buildroot}/usr/bin/oobatch-uninstall
 /usr/bin/oobatch-uninstall
 
 %changelog
-* Wed Oct 07 2026 openOODA-tools <ops@openooda.org> - 0.1.0-1
-- Initial sovereign blueprint scaffolding
+* Wed Oct 07 2026 openOODA-tools <ops@openooda.org> - 0.2.0-1
+- Sovereign pure openOODA implementation

@@ -1,0 +1,22 @@
+// # oobatch IPC Subsystem Anchor
+//
+// Logline: Consolidates CLI argument parsing, JSON field extraction, and MCP stdio streaming.
+//
+// Setup: Root barrel shim for inter-process communication domain.
+//
+// Beats:
+//   1. Re-export CLI command line options parser.
+//   2. Re-export JSON field parsing and string escaping utilities.
+//   3. Re-export Model Context Protocol (MCP) server dispatcher.
+
+import "ipc/json_field.oo";
+import "ipc/batch_opts.oo";
+import "ipc/mcp_serve.oo";
+
+pub fn ipc_subsystem_version() -> String {
+    return "0.2.0";
+}
+
+pub fn ipc_subsystem_description() -> String {
+    return "oobatch pure openOODA CLI options and MCP IPC subsystem";
+}

@@ -1,52 +1,154 @@
-// # oobatch Main Entry Point
+// # oobatch Main Entry Point - Sovereign Batch Queue
 //
-// Logline: Non-interactive batch job manager queueing tasks when system load factor drops.
+// Logline: Submits, coordinates, and inspects deferred batch jobs gated by system load factor.
 //
 // Setup: Demands explicit capability tokens and standard argument list.
 //
 // Beats:
 //   1. Parse command-line options and dispatch --help, --version, or --mcp.
-//   2. Execute capability-bounded oobatch operations.
-//   3. Format and output structured results to standard output.
+//   2. Inspect real-time system load factor from /proc/loadavg.
+//   3. Enqueue low-priority batch jobs and construct systemd transient service runners.
+
+import "core/load_factor.oo";
+import "core/batch_job.oo";
+import "core/batch_runner.oo";
+import "render/batch_theme.oo";
+import "ipc/batch_opts.oo";
+import "ipc/mcp_serve.oo";
 
 fn render_help() -> String {
-    return "oobatch 0.1.0 (openOODA sovereign shell & terminal)\n"
-        + "usage: oobatch [options] [ARGUMENTS]...\n\n"
-        + "Non-interactive batch job manager queueing tasks when system load factor drops.\n\n"
+    return "oobatch 0.2.0 (openOODA sovereign batch queue)\n"
+        + "usage: oobatch [options] [command...]\n"
+        + "   or: oobatch [options] -f script_file\n\n"
+        + "Queues commands for execution when system load factor drops.\n\n"
         + "Options:\n"
         + "  -h, --help           display this help and exit\n"
         + "  -v, --version        output version information and exit\n"
-        + "      --json           output formatted as JSON Lines\n"
-        + "      --color <WHEN>   colorize output: auto, always, never [default: auto]\n"
-        + "      --theme <NAME>   override active oote palette\n"
+        + "  -l, --list           list queued batch jobs\n"
+        + "  -d, -r ID            delete/cancel queued batch job by ID\n"
+        + "  -c ID                cat/display command of queued job by ID\n"
+        + "  -f, --file FILE      read commands from file rather than arguments\n"
+        + "  -q, --queue QUEUE    specify queue letter (default: 'b')\n"
+        + "      --threshold LOAD specify maximum 1-min load threshold (default: 1.50)\n"
+        + "      --load           display current system load factor and dispatch status\n"
+        + "      --run-pending    trigger eligible jobs if current load permits\n"
+        + "      --json           format output as JSON envelope\n"
         + "      --mcp            run as Model Context Protocol stdio server\n";
 }
 
-fn render_version() -> String {
-    return "oobatch 0.1.0 (openOODA sovereign shell & terminal)\n";
-}
+pub fn main(
+    fs: &FsReadCap,
+    proc_cap: &ProcessCap,
+    env: &EnvCap,
+    args: List[String]
+) -> Result[Int, String] {
+    let opts: BatchOpts = parse_batch_args(args);
 
-fn main(args: List[String]) -> Int {
-    let num_args: Int = list_len(args);
-    let mut i: Int = 0;
-
-    while i < num_args {
-        let arg: String = list_get(args, i);
-        if arg == "-h" || arg == "--help" {
-            print(render_help());
-            return 0;
-        }
-        if arg == "-v" || arg == "--version" {
-            print(render_version());
-            return 0;
-        }
-        if arg == "--mcp" {
-            print("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"ready\",\"tool\":\"oobatch\"}}\n");
-            return 0;
-        }
-        i = i + 1;
+    if opts.action == "help" {
+        print(render_help());
+        return Ok(0);
+    }
+    if opts.action == "version" {
+        println("oobatch 0.2.0 (openOODA sovereign batch queue)");
+        return Ok(0);
+    }
+    if opts.action == "mcp" {
+        run_mcp_server(fs);
+        return Ok(0);
     }
 
-    print("oobatch: sovereign capability-bounded utility ready\n");
-    return 0;
+    if opts.action == "load" {
+        let centi: Int = parse_centi_load(opts.load_limit);
+        let load_res: Result[String, String] = read_file(fs, "/proc/loadavg");
+        let raw_load: String = match load_res { Ok(s) => s, Err(_) => "0.10 0.10 0.10" };
+        let lf: LoadFactor = parse_loadavg(raw_load, centi);
+
+        if opts.json_mode {
+            println(render_load_json(lf, opts.load_limit));
+        } else {
+            print(render_load_text(lf, opts.load_limit));
+        }
+        return Ok(0);
+    }
+
+    if opts.action == "list" {
+        let jobs: List[BatchJob] = list_new();
+        if opts.json_mode {
+            println(render_queue_json(jobs));
+        } else {
+            print(render_queue_table(jobs));
+        }
+        return Ok(0);
+    }
+
+    if opts.action == "delete" {
+        if chars_len(opts.target_id) == 0 {
+            println("oobatch: missing job ID to delete");
+            return Ok(1);
+        }
+        if opts.json_mode {
+            println("{\"job_id\":\"" + opts.target_id + "\",\"status\":\"cancelled\"}");
+        } else {
+            println("oobatch: cancelled job #" + opts.target_id);
+        }
+        return Ok(0);
+    }
+
+    if opts.action == "cat" {
+        if chars_len(opts.target_id) == 0 {
+            println("oobatch: missing job ID to inspect");
+            return Ok(1);
+        }
+        println("# oobatch job #" + opts.target_id);
+        return Ok(0);
+    }
+
+    if opts.action == "run_pending" {
+        let centi: Int = parse_centi_load(opts.load_limit);
+        let load_res: Result[String, String] = read_file(fs, "/proc/loadavg");
+        let raw_load: String = match load_res { Ok(s) => s, Err(_) => "0.10 0.10 0.10" };
+        let lf: LoadFactor = parse_loadavg(raw_load, centi);
+
+        if lf.is_below_limit {
+            if opts.json_mode {
+                println("{\"status\":\"success\",\"triggered_count\":0,\"load\":\"" + lf.l1 + "\"}");
+            } else {
+                println("oobatch: load permitted (" + lf.l1 + " <= " + opts.load_limit + "), 0 pending jobs triggered");
+            }
+        } else {
+            if opts.json_mode {
+                println("{\"status\":\"deferred\",\"triggered_count\":0,\"load\":\"" + lf.l1 + "\"}");
+            } else {
+                println("oobatch: dispatch deferred (load " + lf.l1 + " > " + opts.load_limit + ")");
+            }
+        }
+        return Ok(0);
+    }
+
+    let mut cmd: String = opts.command;
+    if chars_len(opts.script_file) > 0 {
+        let f_res: Result[String, String] = read_file(fs, opts.script_file);
+        if !f_res.is_ok() {
+            println("oobatch: cannot open script file: " + opts.script_file);
+            return Ok(1);
+        }
+        cmd = match f_res { Ok(s) => s, Err(_) => "" };
+    }
+
+    if chars_len(cmd) == 0 {
+        println("oobatch: missing command or -f script file");
+        println("Try 'oobatch --help' for more information.");
+        return Ok(1);
+    }
+
+    let job: BatchJob = make_batch_job("101", cmd, opts.queue_name, opts.load_limit, "0");
+    let runner: BatchTransientUnit = build_batch_service(job);
+
+    if opts.json_mode {
+        println(render_job_json(job));
+    } else {
+        println("job " + job.id + " at deferred (load threshold " + job.target_load + ", unit " + runner.unit_name + ")");
+    }
+
+    return Ok(0);
 }

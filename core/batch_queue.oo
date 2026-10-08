@@ -1,0 +1,74 @@
+// # oobatch Queue Coordinator
+//
+// Logline: Filters, inspects, and modifies queues of deferred batch tasks.
+//
+// Setup: Pure list transformation functions operating on BatchJob collections.
+//
+// Beats:
+//   1. Filter batch jobs by queue tag and execution state.
+//   2. Locate and remove jobs by unique job identifier.
+//   3. Match pending jobs against real-time system load thresholds.
+
+import "core/batch_job.oo";
+import "core/load_factor.oo";
+
+pub fn filter_by_queue(jobs: List[BatchJob], q: String) -> List[BatchJob] {
+    let mut out: List[BatchJob] = list_new();
+    let n: Int = list_len(jobs);
+    let mut i: Int = 0;
+    while i < n {
+        let job: BatchJob = list_get(jobs, i);
+        if q == "" || job.queue == q {
+            out = list_push(out, job);
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn filter_by_state(jobs: List[BatchJob], st: String) -> List[BatchJob] {
+    let mut out: List[BatchJob] = list_new();
+    let n: Int = list_len(jobs);
+    let mut i: Int = 0;
+    while i < n {
+        let job: BatchJob = list_get(jobs, i);
+        if job.state == st {
+            out = list_push(out, job);
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn remove_job_by_id(jobs: List[BatchJob], target_id: String) -> List[BatchJob] {
+    let mut out: List[BatchJob] = list_new();
+    let n: Int = list_len(jobs);
+    let mut i: Int = 0;
+    while i < n {
+        let job: BatchJob = list_get(jobs, i);
+        if job.id != target_id {
+            out = list_push(out, job);
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn count_queued_jobs(jobs: List[BatchJob]) -> Int {
+    let mut count: Int = 0;
+    let n: Int = list_len(jobs);
+    let mut i: Int = 0;
+    while i < n {
+        let job: BatchJob = list_get(jobs, i);
+        if job.state == "queued" {
+            count = count + 1;
+        }
+        i = i + 1;
+    }
+    return count;
+}
+
+pub fn is_job_eligible(job: BatchJob, current_centi: Int) -> Bool {
+    let target_centi: Int = parse_centi_load(job.target_load);
+    return current_centi <= target_centi;
+}

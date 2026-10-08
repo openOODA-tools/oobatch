@@ -1,0 +1,112 @@
+// # oobatch Rendering and Diagnostics Theme
+//
+// Logline: Formats batch job queues, load status, and execution diagnostics for terminal and JSON envelopes.
+//
+// Setup: Pure string formatter supporting oote styling and JSON envelope serialization.
+//
+// Beats:
+//   1. Provide ANSI styling helpers for terminal diagnostics and queue tables.
+//   2. Format real-time load averages and threshold gating state.
+//   3. Serialize batch jobs and queue collections into structured JSON envelopes.
+
+import "core/load_factor.oo";
+import "core/batch_job.oo";
+
+pub fn ansi_reset() -> String { return "\x1b[0m"; }
+pub fn ansi_bold() -> String { return "\x1b[1m"; }
+pub fn ansi_dim() -> String { return "\x1b[2m"; }
+pub fn ansi_cyan() -> String { return "\x1b[36m"; }
+pub fn ansi_green() -> String { return "\x1b[32m"; }
+pub fn ansi_yellow() -> String { return "\x1b[33m"; }
+pub fn ansi_red() -> String { return "\x1b[31m"; }
+
+fn json_escape(s: String) -> String {
+    let mut out: String = "";
+    let n: Int = chars_len(s);
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        if c == "\\" {
+            out = out + "\\\\";
+        } else if c == "\"" {
+            out = out + "\\\"";
+        } else if c == "\n" {
+            out = out + "\\n";
+        } else if c == "\r" {
+            out = out + "\\r";
+        } else if c == "\t" {
+            out = out + "\\t";
+        } else {
+            out = out + c;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn render_load_text(lf: LoadFactor, max_load: String) -> String {
+    let mut out: String = ansi_bold() + "oobatch System Load Factor" + ansi_reset() + "\n";
+    out = out + "  1-min load : " + ansi_cyan() + lf.l1 + ansi_reset() + "\n";
+    out = out + "  5-min load : " + lf.l5 + "\n";
+    out = out + " 15-min load : " + lf.l15 + "\n";
+    out = out + "  Threshold  : " + max_load + "\n";
+    out = out + "  Dispatch   : ";
+    if lf.is_below_limit {
+        out = out + ansi_green() + "PERMITTED" + ansi_reset() + " (load <= threshold)\n";
+    } else {
+        out = out + ansi_yellow() + "DEFERRED" + ansi_reset() + " (load > threshold)\n";
+    }
+    return out;
+}
+
+pub fn render_load_json(lf: LoadFactor, max_load: String) -> String {
+    let mut out: String = "{\"operation\":\"batch_load\"";
+    out = out + ",\"load_1min\":\"" + lf.l1 + "\"";
+    out = out + ",\"load_5min\":\"" + lf.l5 + "\"";
+    out = out + ",\"load_15min\":\"" + lf.l15 + "\"";
+    out = out + ",\"threshold\":\"" + max_load + "\"";
+    out = out + ",\"dispatch_permitted\":" + (if lf.is_below_limit { "true" } else { "false" }) + "}";
+    return out;
+}
+
+pub fn render_job_json(job: BatchJob) -> String {
+    return "{\"job_id\":\"" + json_escape(job.id) + "\""
+        + ",\"queue\":\"" + json_escape(job.queue) + "\""
+        + ",\"target_load\":\"" + json_escape(job.target_load) + "\""
+        + ",\"state\":\"" + json_escape(job.state) + "\""
+        + ",\"unit_name\":\"" + json_escape(job.unit_name) + "\""
+        + ",\"command\":\"" + json_escape(job.command) + "\"}";
+}
+
+pub fn render_queue_table(jobs: List[BatchJob]) -> String {
+    let n: Int = list_len(jobs);
+    if n == 0 {
+        return "oobatch: queue empty\n";
+    }
+    let mut out: String = ansi_bold() + "JOB       QUEUE  STATE      LIMIT   COMMAND" + ansi_reset() + "\n";
+    let mut i: Int = 0;
+    while i < n {
+        let j: BatchJob = list_get(jobs, i);
+        out = out + j.id + "  ";
+        out = out + j.queue + "      ";
+        out = out + j.state + "    ";
+        out = out + j.target_load + "    ";
+        out = out + j.command + "\n";
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn render_queue_json(jobs: List[BatchJob]) -> String {
+    let mut out: String = "{\"total_jobs\":" + to_string(list_len(jobs)) + ",\"jobs\":[";
+    let n: Int = list_len(jobs);
+    let mut i: Int = 0;
+    while i < n {
+        if i > 0 { out = out + ","; }
+        let j: BatchJob = list_get(jobs, i);
+        out = out + render_job_json(j);
+        i = i + 1;
+    }
+    out = out + "]}";
+    return out;
+}

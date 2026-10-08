@@ -1,0 +1,20 @@
+// # oobatch Render Subsystem Anchor
+//
+// Logline: Consolidates queue tables, load diagnostics, ANSI styling, and JSON envelopes.
+//
+// Setup: Root barrel shim for render formatting domain.
+//
+// Beats:
+//   1. Re-export ANSI terminal color styling.
+//   2. Re-export queue tables and load factor diagnostics.
+//   3. Re-export JSON serializers for jobs and queue records.
+
+import "render/batch_theme.oo";
+
+pub fn render_subsystem_version() -> String {
+    return "0.2.0";
+}
+
+pub fn render_subsystem_description() -> String {
+    return "oobatch pure openOODA render and JSON serialization subsystem";
+}

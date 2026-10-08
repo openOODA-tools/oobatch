@@ -1,0 +1,122 @@
+// # oobatch Load Factor Inspector
+//
+// Logline: Ingests and parses Linux kernel load averages from /proc/loadavg to gate batch execution.
+//
+// Setup: Pure string parser and decimal accumulator converting floating-point loads to centi-units.
+//
+// Beats:
+//   1. Parse 1-minute, 5-minute, and 15-minute load metrics from whitespace-separated fields.
+//   2. Convert decimal load values (e.g. 1.50) into fixed-point centi-integers (150).
+//   3. Compare 1-minute system load against configurable threshold to authorize job dispatch.
+
+pub type LoadFactor = struct {
+    raw: String,
+    l1: String,
+    l5: String,
+    l15: String,
+    c1: Int,
+    c5: Int,
+    c15: Int,
+    is_below_limit: Bool
+};
+
+fn is_ascii_digit(b: Int) -> Bool {
+    return b >= 48 && b <= 57;
+}
+
+pub fn parse_centi_load(s: String) -> Int {
+    let trimmed: String = str_trim(s);
+    let n: Int = chars_len(trimmed);
+    if n == 0 { return 150; }
+
+    let mut dot_pos: Int = -1;
+    let mut i: Int = 0;
+    while i < n {
+        if char_at(trimmed, i) == "." {
+            dot_pos = i;
+        }
+        i = i + 1;
+    }
+
+    if dot_pos < 0 {
+        let mut whole: Int = 0;
+        let mut j: Int = 0;
+        while j < n {
+            let b: Int = byte_at(trimmed, j);
+            if is_ascii_digit(b) {
+                whole = whole * 10 + (b - 48);
+            }
+            j = j + 1;
+        }
+        return whole * 100;
+    }
+
+    let mut whole: Int = 0;
+    let mut j: Int = 0;
+    while j < dot_pos {
+        let b: Int = byte_at(trimmed, j);
+        if is_ascii_digit(b) {
+            whole = whole * 10 + (b - 48);
+        }
+        j = j + 1;
+    }
+
+    let mut d1: Int = 0;
+    let mut d2: Int = 0;
+    if dot_pos + 1 < n {
+        let b1: Int = byte_at(trimmed, dot_pos + 1);
+        if is_ascii_digit(b1) { d1 = b1 - 48; }
+    }
+    if dot_pos + 2 < n {
+        let b2: Int = byte_at(trimmed, dot_pos + 2);
+        if is_ascii_digit(b2) { d2 = b2 - 48; }
+    }
+
+    let centi: Int = whole * 100 + (d1 * 10 + d2);
+    return centi;
+}
+
+pub fn parse_loadavg(raw: String, max_centi: Int) -> LoadFactor {
+    let trimmed: String = str_trim(raw);
+    let mut words: List[String] = list_new();
+    let n: Int = chars_len(trimmed);
+    let mut curr: String = "";
+    let mut i: Int = 0;
+
+    while i < n {
+        let c: String = char_at(trimmed, i);
+        if c == " " || c == "\t" || c == "\n" {
+            if chars_len(curr) > 0 {
+                words = list_push(words, curr);
+                curr = "";
+            }
+        } else {
+            curr = curr + c;
+        }
+        i = i + 1;
+    }
+    if chars_len(curr) > 0 {
+        words = list_push(words, curr);
+    }
+
+    let num_words: Int = list_len(words);
+    let s1: String = if num_words > 0 { list_get(words, 0) } else { "0.00" };
+    let s5: String = if num_words > 1 { list_get(words, 1) } else { "0.00" };
+    let s15: String = if num_words > 2 { list_get(words, 2) } else { "0.00" };
+
+    let c1: Int = parse_centi_load(s1);
+    let c5: Int = parse_centi_load(s5);
+    let c15: Int = parse_centi_load(s15);
+    let below: Bool = c1 <= max_centi;
+
+    return LoadFactor {
+        raw: trimmed,
+        l1: s1,
+        l5: s5,
+        l15: s15,
+        c1: c1,
+        c5: c5,
+        c15: c15,
+        is_below_limit: below
+    };
+}

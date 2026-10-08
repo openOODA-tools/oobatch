@@ -4,7 +4,7 @@
 # "Removes oobatch binary, package installations, and cache."
 #
 # Usage:
-#   curl -fsSL https://openooda-toobatch.github.io/oobatch/uninstall.sh | bash
+#   curl -fsSL https://openooda-tools.github.io/oobatch/uninstall.sh | bash
 #   or: ./uninstall.sh [options]
 #
 # Options:

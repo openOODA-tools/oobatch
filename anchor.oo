@@ -1,13 +1,22 @@
-// # oobatch Root Anchor
+// # oobatch Root Subsystem Anchor
 //
-// Logline: Top-level anchor re-exporting options, core logic, render, and ipc subsystems.
+// Logline: Sovereign batch job manager queueing tasks when system load factor drops.
 //
-// Setup: Pure shim re-exporting all oobatch subsystem anchors.
+// Setup: Root barrel shim re-exporting options, core logic, render, and ipc subsystems.
 //
 // Beats:
-//   1. Re-export options parsing subsystem.
-//   2. Re-export core oobatch execution engine.
-//   3. Re-export render formatting subsystem.
-//   4. Re-export Model Context Protocol (MCP) IPC subsystem.
+//   1. Re-export core load inspection and queue logic.
+//   2. Re-export render formatting subsystem.
+//   3. Re-export Model Context Protocol (MCP) IPC subsystem.
 
-import "main.oo";
+import "core/anchor.oo";
+import "render/anchor.oo";
+import "ipc/anchor.oo";
+
+pub fn oobatch_version() -> String {
+    return "0.2.0";
+}
+
+pub fn oobatch_banner() -> String {
+    return "oobatch v0.2.0 (openOODA sovereign batch queue)";
+}

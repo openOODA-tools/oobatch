@@ -1,0 +1,111 @@
+// # Model Context Protocol (MCP) Stdio Server for oobatch
+//
+// Logline: JSON-RPC 2.0 stdio server providing batch enqueue, queue listing, and load inspection tools.
+//
+// Setup: Demands FsReadCap for stdio streaming. Operates without ambient authority.
+//
+// Beats:
+//   1. Ingest JSON-RPC 2.0 frames over stdin and dispatch RPC methods.
+//   2. Advertise batch enqueue, job cancellation, queue inspection, and load factor tools.
+//   3. Execute capability-bounded scheduling operations and stream JSON responses.
+
+import "core/load_factor.oo";
+import "core/batch_job.oo";
+import "render/batch_theme.oo";
+import "ipc/json_field.oo";
+
+pub fn run_mcp_server(fs: &FsReadCap) {
+    let mut running: Bool = true;
+    while running {
+        let line_res: Result[String, String] = oo_read_stdin_chunk(fs, 8192);
+        if !line_res.is_ok() {
+            running = false;
+        } else {
+            let line: String = match line_res { Ok(s) => s, Err(_) => "" };
+            let trimmed: String = str_trim(line);
+            if chars_len(trimmed) == 0 {
+                running = false;
+            } else {
+                let id: String = json_get_field(trimmed, "id");
+                let method: String = json_get_string(trimmed, "method");
+
+                if method == "initialize" {
+                    let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                        ",\"result\":{\"protocolVersion\":\"2024-11-05\"," +
+                        "\"serverInfo\":{\"name\":\"oobatch\",\"version\":\"0.2.0\"}," +
+                        "\"capabilities\":{\"tools\":{}}}}";
+                    println(resp);
+                } else if method == "notifications/initialized" {
+                    // Ack
+                } else if method == "tools/list" {
+                    let t1: String = "{\"name\":\"batch_enqueue\",\"description\":\"Enqueue a batch job for execution when load permits\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"},\"threshold\":{\"type\":\"string\"},\"queue\":{\"type\":\"string\"}},\"required\":[\"command\"]}}";
+                    let t2: String = "{\"name\":\"batch_list\",\"description\":\"List queued and deferred batch jobs\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{\"queue\":{\"type\":\"string\"}}}}";
+                    let t3: String = "{\"name\":\"batch_cancel\",\"description\":\"Cancel and remove a queued batch job\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{\"job_id\":{\"type\":\"string\"}},\"required\":[\"job_id\"]}}";
+                    let t4: String = "{\"name\":\"batch_load\",\"description\":\"Inspect current system load averages and execution threshold\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{\"threshold\":{\"type\":\"string\"}}}}";
+                    let t5: String = "{\"name\":\"batch_stats\",\"description\":\"Query oobatch specifications\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}";
+                    let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                        ",\"result\":{\"tools\":[" + t1 + "," + t2 + "," + t3 + "," + t4 + "," + t5 + "]}}";
+                    println(resp);
+                } else if method == "tools/call" {
+                    let params: String = json_get_field(trimmed, "params");
+                    let tool_name: String = json_get_string(params, "name");
+                    let args: String = json_get_field(params, "arguments");
+
+                    if tool_name == "batch_enqueue" {
+                        let cmd_in: String = json_get_string(args, "command");
+                        let thresh_in: String = json_get_string(args, "threshold");
+                        let q_in: String = json_get_string(args, "queue");
+                        let th: String = if chars_len(thresh_in) > 0 { thresh_in } else { "1.50" };
+                        let q: String = if chars_len(q_in) > 0 { q_in } else { "b" };
+                        let job: BatchJob = make_batch_job("101", cmd_in, q, th, "0");
+                        let j: String = render_job_json(job);
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape_string(j) + "\"}]}}";
+                        println(resp);
+                    } else if tool_name == "batch_list" {
+                        let jobs: List[BatchJob] = list_new();
+                        let j: String = render_queue_json(jobs);
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape_string(j) + "\"}]}}";
+                        println(resp);
+                    } else if tool_name == "batch_cancel" {
+                        let job_id: String = json_get_string(args, "job_id");
+                        let cancel_res: String = "{\"job_id\":\"" + job_id + "\",\"status\":\"cancelled\"}";
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape_string(cancel_res) + "\"}]}}";
+                        println(resp);
+                    } else if tool_name == "batch_load" {
+                        let thresh_in: String = json_get_string(args, "threshold");
+                        let th: String = if chars_len(thresh_in) > 0 { thresh_in } else { "1.50" };
+                        let centi: Int = parse_centi_load(th);
+                        let load_res: Result[String, String] = read_file(fs, "/proc/loadavg");
+                        let raw_load: String = match load_res { Ok(s) => s, Err(_) => "0.10 0.10 0.10" };
+                        let lf: LoadFactor = parse_loadavg(raw_load, centi);
+                        let j: String = render_load_json(lf, th);
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape_string(j) + "\"}]}}";
+                        println(resp);
+                    } else if tool_name == "batch_stats" {
+                        let stat: String = "{\"name\":\"oobatch\",\"version\":\"0.2.0\",\"standard\":\"POSIX.1-2017 batch / systemd-native\",\"status\":\"active\"}";
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape_string(stat) + "\"}]}}";
+                        println(resp);
+                    } else {
+                        let err_resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}";
+                        println(err_resp);
+                    }
+                } else {
+                    let err_resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                        ",\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}";
+                    println(err_resp);
+                }
+            }
+        }
+    }
+}

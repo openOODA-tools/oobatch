@@ -1,0 +1,105 @@
+// # oobatch CLI Options Parser
+//
+// Logline: Ingests command line arguments into typed batch queue options.
+//
+// Setup: Pure argument decoding supporting POSIX batch, at -b, and GNU coreutils flags.
+//
+// Beats:
+//   1. Define BatchOpts data structure covering queue actions, targets, and load limits.
+//   2. Extract flags for queue inspection, cancellation, file inputs, and custom limits.
+//   3. Separate command positional arguments from option flags.
+
+pub type BatchOpts = struct {
+    action: String,
+    target_id: String,
+    queue_name: String,
+    load_limit: String,
+    script_file: String,
+    command: String,
+    json_mode: Bool
+};
+
+pub fn default_batch_opts() -> BatchOpts {
+    return BatchOpts {
+        action: "submit",
+        target_id: "",
+        queue_name: "b",
+        load_limit: "1.50",
+        script_file: "",
+        command: "",
+        json_mode: false
+    };
+}
+
+pub fn parse_batch_args(args: List[String]) -> BatchOpts {
+    let mut opts: BatchOpts = default_batch_opts();
+    let n: Int = list_len(args);
+    let mut i: Int = 0;
+    let mut cmd_parts: List[String] = list_new();
+
+    while i < n {
+        let arg: String = list_get(args, i);
+        if arg == "-h" || arg == "--help" {
+            opts.action = "help";
+            return opts;
+        } else if arg == "-v" || arg == "--version" {
+            opts.action = "version";
+            return opts;
+        } else if arg == "--mcp" {
+            opts.action = "mcp";
+            return opts;
+        } else if arg == "--json" {
+            opts.json_mode = true;
+        } else if arg == "-l" || arg == "--list" {
+            opts.action = "list";
+        } else if arg == "--load" {
+            opts.action = "load";
+        } else if arg == "--run-pending" {
+            opts.action = "run_pending";
+        } else if arg == "-d" || arg == "-r" || arg == "--delete" || arg == "--remove" {
+            opts.action = "delete";
+            if i + 1 < n {
+                i = i + 1;
+                opts.target_id = list_get(args, i);
+            }
+        } else if arg == "-c" || arg == "--cat" {
+            opts.action = "cat";
+            if i + 1 < n {
+                i = i + 1;
+                opts.target_id = list_get(args, i);
+            }
+        } else if arg == "-f" || arg == "--file" {
+            if i + 1 < n {
+                i = i + 1;
+                opts.script_file = list_get(args, i);
+            }
+        } else if arg == "--threshold" {
+            if i + 1 < n {
+                i = i + 1;
+                opts.load_limit = list_get(args, i);
+            }
+        } else if arg == "-q" || arg == "--queue" {
+            if i + 1 < n {
+                i = i + 1;
+                opts.queue_name = list_get(args, i);
+            }
+        } else if !str_starts_with(arg, "-") {
+            cmd_parts = list_push(cmd_parts, arg);
+        }
+        i = i + 1;
+    }
+
+    let n_cmd: Int = list_len(cmd_parts);
+    if n_cmd > 0 {
+        let mut full_cmd: String = "";
+        let mut c: Int = 0;
+        while c < n_cmd {
+            if c > 0 { full_cmd = full_cmd + " "; }
+            full_cmd = full_cmd + list_get(cmd_parts, c);
+            c = c + 1;
+        }
+        opts.command = full_cmd;
+    }
+
+    return opts;
+}

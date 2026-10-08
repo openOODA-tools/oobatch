@@ -1,7 +1,7 @@
 # Maintainer: openOODA-tools <ops@openooda.org>
 pkgname=oobatch-bin
 _pkgname=oobatch
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Non-interactive batch job manager queueing tasks when system load factor drops."
 arch=('x86_64')
